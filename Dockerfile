@@ -44,13 +44,16 @@ RUN apk add --no-cache tini
 
 WORKDIR /app
 
-# Copy build artifacts (dist + node_modules) from the build stage.
-COPY --from=build /build/sphere-sdk/dist /app/sphere-sdk/dist
-COPY --from=build /build/sphere-sdk/package.json /app/sphere-sdk/package.json
-COPY --from=build /build/sphere-sdk/node_modules /app/sphere-sdk/node_modules
-COPY --from=build /build/js-faucet/dist /app/dist
-COPY --from=build /build/js-faucet/package.json /app/package.json
-COPY --from=build /build/js-faucet/node_modules /app/node_modules
+# Copy compiled output + package files for production install.
+COPY --from=build /build/js-faucet/dist ./dist/
+COPY --from=build /build/js-faucet/package.json /build/js-faucet/package-lock.json ./
+COPY --from=build /build/sphere-sdk/ ./sphere-sdk/
+
+# Rewrite the file: dependency to the local copy in the image (the original
+# `file:../sphere-sdk` would point outside the container). Then install only
+# production deps. Mirror of escrow-service/Dockerfile:Stage-2.
+RUN sed -i 's|"file:../sphere-sdk"|"file:./sphere-sdk"|' package.json \
+ && npm install --omit=dev --ignore-scripts --no-audit --no-fund
 
 # /data is the standard tenant data dir (mounted by HMA at runtime).
 RUN mkdir -p /data/wallet /data/tokens && chown -R node:node /data /app

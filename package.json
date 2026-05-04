@@ -10,7 +10,8 @@
     "dev": "tsx src/acp-adapter/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e-live": "vitest run --config vitest.e2e-live.config.ts"
   },
   "dependencies": {
     "@unicitylabs/sphere-sdk": "file:../sphere-sdk",
