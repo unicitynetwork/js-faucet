@@ -193,7 +193,14 @@ export interface SpawnHostManagerOptions {
   templatesPath?: string;
   /** HOST_ID override. Default: random `e2elive-<8chars>`. */
   hostId?: string;
-  /** Health/metrics port (diagnostics-only HTTP). Default 19401. */
+  /**
+   * Health/metrics port (diagnostics-only HTTP). Default `0` — Node's
+   * server.listen(0) picks a random ephemeral port from the OS. Tests
+   * never curl this port, and a fixed default (19401) would collide
+   * across concurrent test runs or when a prior run leaked an HMA
+   * process. Pass an explicit number only when a specific test really
+   * needs to probe the health endpoint.
+   */
   healthPort?: number;
   /** Hello-handshake timeout in ms (default 60000 — generous for testnet boot). */
   helloTimeoutMs?: number;
@@ -257,7 +264,7 @@ export async function spawnHostManager(opts: SpawnHostManagerOptions): Promise<H
     TENANTS_DIR: tenantsDir,
     SPHERE_MANAGER_DATA_DIR: dataDir,
     PERSISTENCE_PATH: persistencePath,
-    UNICITY_HEALTH_PORT: String(opts.healthPort ?? 19401),
+    UNICITY_HEALTH_PORT: String(opts.healthPort ?? 0),
     UNICITY_NETWORK: 'testnet',
     HELLO_TIMEOUT_MS: String(opts.helloTimeoutMs ?? 60_000),
     LOG_LEVEL: 'info',
