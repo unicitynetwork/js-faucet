@@ -106,6 +106,30 @@ export async function startFaucet(): Promise<void> {
   //    swap/market OFF (faucet doesn't trade or list).
   // ---------------------------------------------------------------------------
   const apiKey = resolveApiKey();
+
+  // Optional Nostr-relay override. When `UNICITY_NOSTR_RELAYS` (or
+  // `SPHERE_NOSTR_RELAYS` as a fallback) is set in the env, replace
+  // the network preset's relay list. Use cases:
+  //   - Local Docker relay for e2e harnesses (sphere-sdk's
+  //     tests/e2e/local-infra) — keep aggregator + IPFS public, swap
+  //     only the relay for one that we control + can rebuild
+  //     deterministically.
+  //   - Operators running against a private relay deployment without
+  //     building a custom network preset.
+  // Comma-separated list of WebSocket URLs ("ws://relay-1,wss://relay-2").
+  // Empty / unset → use the network default. Whitespace + empty entries
+  // are trimmed.
+  const relayOverride = (() => {
+    const raw =
+      process.env['UNICITY_NOSTR_RELAYS'] ?? process.env['SPHERE_NOSTR_RELAYS'];
+    if (!raw) return undefined;
+    const relays = raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    return relays.length > 0 ? relays : undefined;
+  })();
+  if (relayOverride) {
+    log.info({ relays: relayOverride }, 'nostr_relays_override_active');
+  }
+
   log.info({ network: config.network, data_dir: config.data_dir }, 'initializing_sphere');
   const providers = createNodeProviders({
     network: config.network as 'testnet' | 'mainnet' | 'dev',
@@ -115,6 +139,7 @@ export async function startFaucet(): Promise<void> {
       trustBasePath: trustbasePath,
       apiKey,
     },
+    ...(relayOverride ? { transport: { relays: relayOverride } } : {}),
   });
 
   // Default nametag pattern matches escrow/trader: a short type prefix +
@@ -162,6 +187,13 @@ export async function startFaucet(): Promise<void> {
     },
     'sphere_initialized',
   );
+  // Dedicated boot signal carrying the FULL chainPubkey so external
+  // harnesses (e.g., sphere-sdk's tests/e2e/local-infra) can scrape
+  // stdout and learn where to send FAUCET_REQUEST DMs without going
+  // through the manager handshake. Truncating the pubkey in the
+  // structured `sphere_initialized` line above keeps human logs
+  // readable; this separate line gives automation an exact match.
+  log.info({ chain_pubkey: faucetPubkey }, 'faucet_chain_pubkey_announced');
 
   // Verify nametag is resolvable on the relay before declaring ready.
   if (identity.nametag) {
