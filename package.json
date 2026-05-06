@@ -1,0 +1,29 @@
+{
+  "name": "@unicitylabs/js-faucet",
+  "version": "0.1.0",
+  "description": "DM-driven testnet faucet agent for Unicity. Spawns under agentic-hosting; mints + sends UCT/USDU/etc on FAUCET_REQUEST.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/acp-adapter/main.js",
+    "dev": "tsx src/acp-adapter/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e-live": "vitest run --config vitest.e2e-live.config.ts"
+  },
+  "dependencies": {
+    "@unicitylabs/sphere-sdk": "file:../sphere-sdk",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
