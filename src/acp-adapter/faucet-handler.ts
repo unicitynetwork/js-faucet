@@ -344,10 +344,37 @@ async function sendToRecipient(
     // DIRECT://, PROXY://, raw hex, phone numbers).
     // SDK's TransferRequest carries `amount` as a string (smallest units);
     // we pass our bigint as a decimal string.
+    //
+    // transferMode='conservative': the SDK collects the inclusion proof on
+    // the SENDER's side before delivering the wire payload. The recipient
+    // receives a fully-finalized {sourceToken, transferTx} bundle and can
+    // immediately produce a 'confirmed' Token with sdkData reflecting the
+    // RECIPIENT's predicate (UnmaskedPredicate.create using the recipient's
+    // signingService — see PaymentsModule.finalizeTransferToken).
+    //
+    // 'instant' mode (the default) instead sends a COMBINED_TRANSFER_V6
+    // bundle — the recipient saves the token at status='submitted' with the
+    // SENDER's sdkData and only swaps in the recipient-state-bound sdkData
+    // AFTER the proof poll completes (PaymentsModule.finalizeReceivedToken,
+    // line ~5395). When the recipient downstream tries to spend before
+    // finalization replaces sdkData, the spend builds a commitment with
+    // sourceState=sender's predicate, authenticator=recipient's key, and
+    // the aggregator throws "Authenticator does not match source state
+    // predicate." The trader's swap-deposit hits this race because:
+    //   1. Trader portfolio shows "5000 confirmed UCT" (counted as
+    //      confirmed even when the in-memory token is at 'submitted'? — see
+    //      diagnostic notes; could also be a transient handle-bundle window
+    //      where the token is briefly 'confirmed' with sender sdkData),
+    //   2. Trader posts intent, deal hits ACCEPTED,
+    //   3. Trader picks the not-yet-finalized token to fund the deposit,
+    //   4. submitTransferCommitment rejects.
+    // Conservative mode sidesteps the race entirely by handing the recipient
+    // a token whose sdkData is already bound to its own predicate.
     const result = await sphere.payments.send({
       coinId: coinIdHex,
       amount: amount.toString(),
       recipient,
+      transferMode: 'conservative',
       ...(memo !== undefined ? { memo } : {}),
     } as Parameters<typeof sphere.payments.send>[0]);
     // Newer SDKs return { id, status, ... }; treat status==='pending'/'sent' as ok.
