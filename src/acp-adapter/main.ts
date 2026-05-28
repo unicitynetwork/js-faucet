@@ -50,7 +50,7 @@ import { handleFaucetRequest, type FaucetResult } from './faucet-handler.js';
 import { listKnownSymbols } from './coin-registry.js';
 import { logger } from '../utils/logger.js';
 
-const TRUSTBASE_URL =
+const DEFAULT_TRUSTBASE_URL =
   'https://raw.githubusercontent.com/unicitynetwork/unicity-ids/refs/heads/main/bft-trustbase.testnet.json';
 
 const ADAPTER_NAME = 'js-faucet';
@@ -92,9 +92,16 @@ export async function startFaucet(): Promise<void> {
 
   // ---------------------------------------------------------------------------
   // 3. Download trustbase
+  //
+  // The trust base URL defaults to the canonical testnet doc on GitHub
+  // but can be overridden via SPHERE_TRUSTBASE_URL — useful when running
+  // against a self-hosted aggregator with its own fresh genesis (the URL
+  // can point at any HTTP(S)-served file, including a local nginx mount
+  // of the aggregator's /app/bft-config/trust-base.json).
   // ---------------------------------------------------------------------------
-  log.info({ url: TRUSTBASE_URL }, 'downloading_trustbase');
-  const tbResponse = await fetch(TRUSTBASE_URL, { signal: AbortSignal.timeout(30_000) });
+  const trustbaseUrl = process.env['SPHERE_TRUSTBASE_URL'] ?? DEFAULT_TRUSTBASE_URL;
+  log.info({ url: trustbaseUrl }, 'downloading_trustbase');
+  const tbResponse = await fetch(trustbaseUrl, { signal: AbortSignal.timeout(30_000) });
   if (!tbResponse.ok) {
     throw new Error(`Failed to download trustbase: HTTP ${String(tbResponse.status)}`);
   }
@@ -130,12 +137,37 @@ export async function startFaucet(): Promise<void> {
     log.info({ relays: relayOverride }, 'nostr_relays_override_active');
   }
 
+  // Optional aggregator URL override. When SPHERE_AGGREGATOR_URL is
+  // set, it replaces the network preset's aggregator (same use case
+  // as the Nostr-relay override above — pointing at a self-hosted
+  // deployment without forking the SDK to add a custom preset).
+  const aggregatorUrl = process.env['SPHERE_AGGREGATOR_URL'];
+  if (aggregatorUrl) {
+    log.info({ url: aggregatorUrl }, 'aggregator_override_active');
+  }
+  // Optional skipVerification flag. Only honored when explicitly set
+  // via SPHERE_AGGREGATOR_SKIP_VERIFICATION. We deliberately do NOT
+  // auto-enable it when aggregatorUrl is set: skipVerification
+  // bypasses the trust-base loader entirely, which then makes the
+  // SDK's `oracle.getTrustBase()` return null and breaks every
+  // subsequent operation that needs the trust base (nametag mint,
+  // invoice mint, inclusion-proof verification). The right behavior
+  // when redirecting the aggregator is to ALSO supply
+  // SPHERE_TRUSTBASE_URL pointing at that aggregator's trust base.
+  const skipVerification = (() => {
+    const v = process.env['SPHERE_AGGREGATOR_SKIP_VERIFICATION'];
+    if (v === undefined) return undefined;
+    return v === '1' || v.toLowerCase() === 'true';
+  })();
+
   log.info({ network: config.network, data_dir: config.data_dir }, 'initializing_sphere');
   const providers = createNodeProviders({
     network: config.network as 'testnet' | 'mainnet' | 'dev',
     dataDir: config.data_dir,
     tokensDir: config.tokens_dir,
     oracle: {
+      ...(aggregatorUrl ? { url: aggregatorUrl } : {}),
+      ...(skipVerification !== undefined ? { skipVerification } : {}),
       trustBasePath: trustbasePath,
       apiKey,
     },
