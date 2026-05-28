@@ -137,22 +137,26 @@ export async function startFaucet(): Promise<void> {
     log.info({ relays: relayOverride }, 'nostr_relays_override_active');
   }
 
-  // Optional aggregator URL override. When SPHERE_AGGREGATOR_URL is set
-  // it replaces the network preset's aggregator (with the same use case
+  // Optional aggregator URL override. When SPHERE_AGGREGATOR_URL is
+  // set, it replaces the network preset's aggregator (same use case
   // as the Nostr-relay override above — pointing at a self-hosted
-  // deployment without building a custom network preset). When set, we
-  // also enable skipVerification by default because a self-hosted
-  // aggregator has its own freshly-minted trust base that won't match
-  // the SDK's compiled-in test vectors. Override with
-  // SPHERE_AGGREGATOR_SKIP_VERIFICATION=false if you've supplied
-  // a matching SPHERE_TRUSTBASE_URL.
+  // deployment without forking the SDK to add a custom preset).
   const aggregatorUrl = process.env['SPHERE_AGGREGATOR_URL'];
   if (aggregatorUrl) {
     log.info({ url: aggregatorUrl }, 'aggregator_override_active');
   }
+  // Optional skipVerification flag. Only honored when explicitly set
+  // via SPHERE_AGGREGATOR_SKIP_VERIFICATION. We deliberately do NOT
+  // auto-enable it when aggregatorUrl is set: skipVerification
+  // bypasses the trust-base loader entirely, which then makes the
+  // SDK's `oracle.getTrustBase()` return null and breaks every
+  // subsequent operation that needs the trust base (nametag mint,
+  // invoice mint, inclusion-proof verification). The right behavior
+  // when redirecting the aggregator is to ALSO supply
+  // SPHERE_TRUSTBASE_URL pointing at that aggregator's trust base.
   const skipVerification = (() => {
     const v = process.env['SPHERE_AGGREGATOR_SKIP_VERIFICATION'];
-    if (v === undefined) return aggregatorUrl ? true : undefined;
+    if (v === undefined) return undefined;
     return v === '1' || v.toLowerCase() === 'true';
   })();
 
